@@ -591,16 +591,26 @@ pub fn build(b: *std.Build) void {
     // Generated via glib's own tools/gen-visibility-macros.py (same
     // generator meson uses), so these two headers are exact, not
     // hand-approximated like config.h/glibconfig.h above. Requires
-    // `python` on PATH at build time.
+    // a Python 3 interpreter on PATH at build time, as either
+    // `python` (typical on Windows) or `python3` (typical on Linux/macOS).
+    // `python` is tried first: on Windows, resolving a missing real
+    // interpreter can land on the "App Execution Alias" stub
+    // (WindowsApps\python3.exe), a reparse point that crashes zig's
+    // std.Build.findProgram (unhandled NTSTATUS) rather than reporting
+    // not-found -- so we only fall back to "python3" where a real
+    // "python" isn't found at all (typical on Linux CI runners).
+    const python_exe = b.findProgram(&.{"python"}, &.{}) catch
+        b.findProgram(&.{"python3"}, &.{}) catch
+        @panic("python or python3 not found on PATH");
     const gen_script = b.path("tools/gen-visibility-macros.py");
 
-    const gen_versions = b.addSystemCommand(&.{ "python", "-B" });
+    const gen_versions = b.addSystemCommand(&.{ python_exe, "-B" });
     gen_versions.addFileArg(gen_script);
     gen_versions.addArgs(&.{ "2.89.1", "versions-macros" });
     gen_versions.addFileArg(b.path("glib/gversionmacros.h.in"));
     const gversionmacros_h = gen_versions.addOutputFileArg("gversionmacros.h");
 
-    const gen_visibility = b.addSystemCommand(&.{ "python", "-B" });
+    const gen_visibility = b.addSystemCommand(&.{ python_exe, "-B" });
     gen_visibility.addFileArg(gen_script);
     gen_visibility.addArgs(&.{ "2.89.1", "visibility-macros", "GLIB" });
     const glib_visibility_h = gen_visibility.addOutputFileArg("glib-visibility.h");
