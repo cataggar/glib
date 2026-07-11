@@ -615,6 +615,21 @@ pub fn build(b: *std.Build) void {
     gen_visibility.addArgs(&.{ "2.89.1", "visibility-macros", "GLIB" });
     const glib_visibility_h = gen_visibility.addOutputFileArg("glib-visibility.h");
 
+    // gmodule.h (installed further below, verbatim from gmodule/gmodule.h)
+    // needs gmodule/gmodule-visibility.h, generated the same way as
+    // glib-visibility.h above (see glib/gmodule/meson.build). We only
+    // install the *header*, not a working gmodule implementation: nothing
+    // in this build actually calls a g_module_* function (gmodule.c is
+    // intentionally not built, matching the "no gobject/gio/gmodule"
+    // scope of this build.zig), but some consumers (e.g. QEMU's
+    // include/qemu/transactions.h) unconditionally #include <gmodule.h>
+    // regardless of whether they use it, since a normal/full glib install
+    // always has it. Making the header parseable is enough for that.
+    const gen_gmodule_visibility = b.addSystemCommand(&.{ python_exe, "-B" });
+    gen_gmodule_visibility.addFileArg(gen_script);
+    gen_gmodule_visibility.addArgs(&.{ "2.89.1", "visibility-macros", "GMODULE" });
+    const gmodule_visibility_h = gen_gmodule_visibility.addOutputFileArg("gmodule-visibility.h");
+
     const mod = b.createModule(.{
         .target = target,
         .optimize = optimize,
@@ -738,4 +753,9 @@ pub fn build(b: *std.Build) void {
     lib.installHeader(generated_headers.join(b.allocator, "glibconfig.h") catch @panic("OOM"), "glibconfig.h");
     lib.installHeader(gversionmacros_h, "glib/gversionmacros.h");
     lib.installHeader(glib_visibility_h, "glib/glib-visibility.h");
+
+    // See the gen_gmodule_visibility comment above: header-only, no
+    // gmodule.c/gmodule-deprecated.c compiled in.
+    lib.installHeader(b.path("gmodule/gmodule.h"), "gmodule.h");
+    lib.installHeader(gmodule_visibility_h, "gmodule/gmodule-visibility.h");
 }
