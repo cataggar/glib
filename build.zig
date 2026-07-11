@@ -728,6 +728,15 @@ pub fn build(b: *std.Build) void {
             .files = &gettext_intl_windows_sources,
             .flags = &.{ "-std=gnu99", "-w" },
         });
+        // libgnuintl.in.h redirects plain setlocale() to libintl_setlocale()
+        // on Windows unconditionally, and glib's own gdatetime.c calls
+        // setlocale() -- see cataggar/gettext's setlocale-compat.c for the
+        // full rationale (a deliberately minimal shim, not gettext's real
+        // setlocale.c, to avoid a large extra gnulib dependency chain).
+        intl_mod.addCSourceFile(.{
+            .file = b.path("../gettext/setlocale-compat.c"),
+            .flags = &.{ "-std=gnu99", "-w" },
+        });
         const intl_lib = b.addLibrary(.{ .name = "intl", .linkage = .static, .root_module = intl_mod });
         b.installArtifact(intl_lib);
         mod.linkLibrary(intl_lib);
