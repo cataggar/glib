@@ -17,6 +17,7 @@
         "build.zig",
         "build.zig.zon",
         "glib",
+        "gmodule",
         "tools",
         "COPYING",
         "README.md",
