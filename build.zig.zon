@@ -3,7 +3,16 @@
     .version = "2.89.1",
     .fingerprint = 0xd1fbf27825da5b42,
     .minimum_zig_version = "0.16.0",
-    .dependencies = .{},
+    .dependencies = .{
+        .libiconv = .{
+            .url = "https://github.com/cataggar/libiconv/archive/d54d0446137856b4c60f4eeb070b7d11743444ea.tar.gz",
+            .hash = "libiconv-1.19.0-dJQYZzz-ZABtg-x9Rc6PkHexdRt6_o83t9iv7qlUwgYp",
+        },
+        .gettext = .{
+            .url = "https://github.com/cataggar/gettext/archive/a1d7f044f8c71f6e80587b4c687945f0a405d3fd.tar.gz",
+            .hash = "gettext-0.26.0-GleY_bRnDACeSHT1A6KVpQxGsUTtaRuK6pclFv-6uKGq",
+        },
+    },
     .paths = .{
         "build.zig",
         "build.zig.zon",

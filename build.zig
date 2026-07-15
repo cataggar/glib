@@ -124,16 +124,16 @@ const glib_windows_sources = [_][]const u8{
     "libcharset/localcharset.c",
 };
 
-// libiconv's own iconv.c/compat.c (from the sibling ../libiconv zig16
-// branch), reused as glib's real iconv() on Windows -- see that repo's
-// build.zig for how these were made to build with zig cc. Its
+// libiconv's own iconv.c/compat.c, reused as glib's real iconv() on
+// Windows -- see that package's build.zig for how these were made to
+// build with zig cc. Its
 // localcharset.c is NOT reused: glib compiles its own copy above
 // (libcharset/localcharset.c), and both define locale_charset().
 const libiconv_windows_sources = [_][]const u8{ "iconv.c", "compat.c" };
 
-// gettext-runtime/intl's sources (from the sibling ../gettext zig16
-// branch), reused as glib's real gettext()/dgettext()/bindtextdomain()
-// on Windows -- see that repo's build.zig for details. Its
+// gettext-runtime/intl's sources, reused as glib's real gettext()/
+// dgettext()/bindtextdomain() on Windows and musl -- see that package's
+// build.zig for details. Its
 // localcharset.c is likewise excluded for the same reason.
 const gettext_intl_windows_sources = [_][]const u8{
     "bindtextdom.c",
@@ -165,6 +165,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const is_windows = target.result.os.tag == .windows;
+    const needs_libintl = is_windows or target.result.abi == .musl;
+    const is_glibc = target.result.os.tag == .linux and !needs_libintl;
+    const libiconv_dep = if (is_windows)
+        b.dependency("libiconv", .{})
+    else
+        null;
+    const gettext_dep = if (needs_libintl)
+        b.dependency("gettext", .{})
+    else
+        null;
 
     if (!is_windows and target.result.os.tag != .linux) {
         std.debug.print(
@@ -461,9 +471,8 @@ pub fn build(b: *std.Build) void {
         \\#define GLIB_BINARY_AGE 8901
         \\
         \\// A real gettext is available on every target this build.zig
-        \\// supports: glibc ships one as part of libc itself, and Windows
-        \\// links the sibling ../gettext zig16 branch's libintl (see
-        \\// gettext_intl_windows_sources below).
+        \\// supports: glibc ships one as part of libc itself, while musl
+        \\// and Windows link the Zig gettext package's libintl sources.
         \\#define ENABLE_NLS 1
         \\#define HAVE_BIND_TEXTDOMAIN_CODESET 1
         \\
@@ -553,7 +562,6 @@ pub fn build(b: *std.Build) void {
         \\#ifndef _WIN32
         \\#define HAVE_STRSIGNAL 1
         \\#define HAVE_STRERROR_R 1
-        \\#define STRERROR_R_CHAR_P 1
         \\#define HAVE_MEMMEM 1
         \\#endif
         \\
@@ -644,9 +652,11 @@ pub fn build(b: *std.Build) void {
     mod.addCMacro("GLIB_COMPILATION", "1");
     mod.addCMacro("G_LOG_DOMAIN", "\"GLib\"");
     mod.addCMacro("GLIB_CHARSETALIAS_DIR", "\"\"");
-    // Needed for glibc GNU extensions used unconditionally by the sources
-    // below: ppoll() (gmain.c), the char*-returning strerror_r()
-    // (gbacktrace.c/gstrfuncs.c), etc.
+    if (is_glibc)
+        mod.addCMacro("STRERROR_R_CHAR_P", "1");
+    // Needed for GNU/POSIX extensions used by the sources below, including
+    // ppoll() in gmain.c. The generated config distinguishes glibc's
+    // char*-returning strerror_r() from musl's POSIX int-returning form.
     mod.addCMacro("_GNU_SOURCE", "1");
 
     // gversionmacros.h/glib-visibility.h are #included (as
@@ -672,25 +682,29 @@ pub fn build(b: *std.Build) void {
     });
 
     if (is_windows) {
-        // Pull in the sibling ../libiconv and ../gettext zig16 branches
-        // (see those repos' build.zig) to provide the real iconv()/
-        // gettext() Windows lacks natively, which gconvert.c/ggettext.c
-        // call unconditionally. Assumes those repos are checked out next
-        // to this one (../libiconv, ../gettext), as they are in this
-        // session. Built as separate library artifacts, not merged into
-        // this module: some of their sources #include <config.h> with
+        // Provide the real iconv() Windows lacks natively, which
+        // gconvert.c calls unconditionally. This is built as a separate
+        // library artifact rather than merged into this module because
+        // some of its sources #include <config.h> with
         // angle brackets (searches the shared -I list in order, unlike
         // quote-includes which check the including file's own directory
         // first), which would otherwise collide with glib's own
         // <config.h> whichever ends up earlier on this module's -I list.
-        mod.addIncludePath(b.path("../libiconv/include"));
+        mod.addIncludePath(libiconv_dep.?.path("include"));
+    }
 
+    if (needs_libintl) {
         // libgnuintl.h (gettext's generated public header) needs to be
         // found as "libintl.h", which is what ggettext.c #includes.
         const libintl_headers = b.addNamedWriteFiles("libintl-header");
-        _ = libintl_headers.addCopyFile(b.path("../gettext/gettext-runtime/intl/libgnuintl.h"), "libintl.h");
+        _ = libintl_headers.addCopyFile(
+            gettext_dep.?.path("gettext-runtime/intl/libgnuintl.h"),
+            "libintl.h",
+        );
         mod.addIncludePath(libintl_headers.getDirectory());
+    }
 
+    if (is_windows) {
         mod.linkSystemLibrary("ws2_32", .{});
         mod.linkSystemLibrary("winmm", .{});
         // gutils.c's Windows special-folder lookups need CoTaskMemFree
@@ -708,11 +722,11 @@ pub fn build(b: *std.Build) void {
 
     if (is_windows) {
         const iconv_mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
-        iconv_mod.addIncludePath(b.path("../libiconv/include"));
-        iconv_mod.addIncludePath(b.path("../libiconv/libcharset/include"));
+        iconv_mod.addIncludePath(libiconv_dep.?.path("include"));
+        iconv_mod.addIncludePath(libiconv_dep.?.path("libcharset/include"));
         iconv_mod.addCMacro("HAVE_CONFIG_H", "1");
         iconv_mod.addCSourceFiles(.{
-            .root = b.path("../libiconv/lib"),
+            .root = libiconv_dep.?.path("lib"),
             .files = &libiconv_windows_sources,
             .flags = &.{ "-std=gnu99", "-w" },
         });
@@ -720,11 +734,15 @@ pub fn build(b: *std.Build) void {
         b.installArtifact(iconv_lib);
         mod.linkLibrary(iconv_lib);
 
+        lib.installHeader(libiconv_dep.?.path("include/iconv.h"), "iconv.h");
+    }
+
+    if (needs_libintl) {
         const intl_mod = b.createModule(.{ .target = target, .optimize = optimize, .link_libc = true });
-        intl_mod.addIncludePath(b.path("../gettext/gettext-runtime/intl"));
+        intl_mod.addIncludePath(gettext_dep.?.path("gettext-runtime/intl"));
         intl_mod.addCMacro("HAVE_CONFIG_H", "1");
         intl_mod.addCSourceFiles(.{
-            .root = b.path("../gettext/gettext-runtime/intl"),
+            .root = gettext_dep.?.path("gettext-runtime/intl"),
             .files = &gettext_intl_windows_sources,
             .flags = &.{ "-std=gnu99", "-w" },
         });
@@ -733,19 +751,17 @@ pub fn build(b: *std.Build) void {
         // setlocale() -- see cataggar/gettext's setlocale-compat.c for the
         // full rationale (a deliberately minimal shim, not gettext's real
         // setlocale.c, to avoid a large extra gnulib dependency chain).
-        intl_mod.addCSourceFile(.{
-            .file = b.path("../gettext/setlocale-compat.c"),
-            .flags = &.{ "-std=gnu99", "-w" },
-        });
+        if (is_windows) {
+            intl_mod.addCSourceFile(.{
+                .file = gettext_dep.?.path("setlocale-compat.c"),
+                .flags = &.{ "-std=gnu99", "-w" },
+            });
+        }
         const intl_lib = b.addLibrary(.{ .name = "intl", .linkage = .static, .root_module = intl_mod });
         b.installArtifact(intl_lib);
         mod.linkLibrary(intl_lib);
 
-        // Install iconv.h/libintl.h too, so a consumer only needs
-        // -Izig-out/include (matching glib.h/glibconfig.h above) instead
-        // of also reaching into ../libiconv and ../gettext directly.
-        lib.installHeader(b.path("../libiconv/include/iconv.h"), "iconv.h");
-        lib.installHeader(b.path("../gettext/gettext-runtime/intl/libgnuintl.h"), "libintl.h");
+        lib.installHeader(gettext_dep.?.path("gettext-runtime/intl/libgnuintl.h"), "libintl.h");
     }
 
     // Install headers so zig-out/include is directly usable by a
