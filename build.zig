@@ -769,12 +769,7 @@ pub fn build(b: *std.Build) void {
     // under zig-out/include/glib/, and the hand-written/generated headers
     // that normally live in meson's separate config/glibinc dirs.
     lib.installHeader(b.path("glib/glib.h"), "glib.h");
-    b.installDirectory(.{
-        .source_dir = b.path("glib"),
-        .install_dir = .header,
-        .install_subdir = "glib",
-        .include_extensions = &.{".h"},
-    });
+    lib.installHeadersDirectory(b.path("glib"), "glib", .{});
     lib.installHeader(generated_headers.join(b.allocator, "glibconfig.h") catch @panic("OOM"), "glibconfig.h");
     lib.installHeader(gversionmacros_h, "glib/gversionmacros.h");
     lib.installHeader(glib_visibility_h, "glib/glib-visibility.h");
