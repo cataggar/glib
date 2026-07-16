@@ -9,8 +9,8 @@
             .hash = "libiconv-1.19.0-dJQYZzz-ZABtg-x9Rc6PkHexdRt6_o83t9iv7qlUwgYp",
         },
         .gettext = .{
-            .url = "https://github.com/cataggar/gettext/archive/a1d7f044f8c71f6e80587b4c687945f0a405d3fd.tar.gz",
-            .hash = "gettext-0.26.0-GleY_bRnDACeSHT1A6KVpQxGsUTtaRuK6pclFv-6uKGq",
+            .url = "https://github.com/cataggar/gettext/archive/b32ff1932b8b23ebdb3a0a378f5f90be9527509c.tar.gz",
+            .hash = "gettext-0.26.0-GleY_R5oDABgCWjrK011tyE3nh5jHTD-Z2rCrr3UZVk2",
         },
     },
     .paths = .{
