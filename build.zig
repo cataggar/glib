@@ -179,6 +179,11 @@ pub fn build(b: *std.Build) void {
         b.dependency("gettext", .{})
     else
         null;
+    if (gettext_dep) |dep|
+        b.addNamedLazyPath(
+            "libintl-license",
+            dep.path("gettext-runtime/intl/COPYING.LIB"),
+        );
 
     if (!is_linux and !is_macos and !is_windows)
         @panic("unsupported target OS: expected Linux, macOS, or Windows");
